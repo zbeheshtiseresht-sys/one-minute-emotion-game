@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: one-minute-one-color
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --timeout 180
+    healthCheckPath: /health
+    envVars:
+      - key: WHISPER_MODEL
+        value: tiny
