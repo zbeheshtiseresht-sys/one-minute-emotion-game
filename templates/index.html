@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>رنگ حال من</title>
+  <style>
+    :root{--ink:#17191f;--muted:#59606d;--panel:rgba(255,255,255,.76);--line:rgba(255,255,255,.72)}
+    *{box-sizing:border-box}
+    html,body{min-height:100%}
+    body{
+      margin:0;min-height:100vh;display:grid;place-items:center;padding:32px;
+      font-family:Tahoma,"Segoe UI",Arial,sans-serif;color:var(--ink);
+      background:
+        radial-gradient(circle at 20% 20%,rgba(255,255,255,.98),transparent 27%),
+        radial-gradient(circle at 82% 78%,rgba(255,255,255,.92),transparent 25%),
+        linear-gradient(135deg,#d9dde3 0%,#f5f5f4 50%,#cbd0d7 100%);
+      transition:background 900ms ease;
+    }
+    .shell{
+      width:min(1120px,100%);min-height:min(800px,calc(100vh - 64px));
+      display:flex;align-items:center;justify-content:center;
+      padding:70px 28px;border-radius:54px;
+      background:var(--panel);border:1px solid var(--line);
+      box-shadow:0 24px 70px rgba(42,47,58,.15),inset 0 1px 0 rgba(255,255,255,.85);
+      backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    }
+    .game{width:min(760px,100%);text-align:center}
+    h1{margin:0 0 32px;font-size:clamp(46px,7vw,86px);font-weight:900;letter-spacing:-2px}
+    .subtitle{margin:0;color:#4d5563;font-size:clamp(20px,2.4vw,31px);line-height:1.8}
+    .timer{margin:48px 0 12px;font-size:clamp(90px,14vw,178px);line-height:.9;font-weight:900;letter-spacing:-7px;font-variant-numeric:tabular-nums}
+    .status{min-height:42px;margin:0 0 42px;color:#3e4652;font-size:clamp(19px,2.1vw,29px)}
+    .primary{margin-bottom:28px}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    button{
+      min-height:104px;border:0;border-radius:28px;padding:20px 26px;cursor:pointer;
+      font:inherit;font-size:clamp(20px,2.4vw,31px);color:#fff;background:#202329;
+      box-shadow:0 12px 25px rgba(32,35,41,.12);transition:transform .16s ease,opacity .2s ease,filter .2s ease;
+    }
+    button:hover:not(:disabled){transform:translateY(-2px);filter:brightness(1.05)}
+    button:active:not(:disabled){transform:translateY(1px)}
+    button:disabled{cursor:not-allowed;opacity:.46}
+    .primary button{width:min(370px,100%)}
+    #resetBtn{background:#aab0ba;color:#fff}
+    .result{display:none;margin:34px auto 0;max-width:680px;text-align:right;padding:22px 26px;border-radius:24px;background:rgba(255,255,255,.62);line-height:2;font-size:18px;color:#2c3340}
+    .result.show{display:block}
+    .note{margin:16px 0 0;color:#667080;font-size:14px}
+    .mic{font-size:1.05em;margin-left:10px}
+    @media (max-width:650px){
+      body{padding:16px}.shell{min-height:calc(100vh - 32px);padding:48px 20px;border-radius:36px}
+      h1{font-size:48px;margin-bottom:24px}.subtitle{font-size:21px}.timer{margin-top:44px;font-size:112px}
+      .status{font-size:22px;margin-bottom:30px}.actions{gap:12px}.actions button{min-height:86px;border-radius:22px;padding:14px 10px;font-size:19px}
+      button{min-height:82px;border-radius:22px}.primary{margin-bottom:18px}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="game" aria-live="polite">
+      <h1>رنگ حال من</h1>
+      <p class="subtitle">یک دقیقه آزادانه درباره احساست صحبت کن</p>
+      <div class="timer" id="timer">01:00</div>
+      <p class="status" id="status">آماده شنیدن هستم.</p>
+
+      <div class="primary"><button id="startBtn"><span class="mic">🎙</span> شروع ضبط</button></div>
+      <div class="actions">
+        <button id="resetBtn">⟳ دوباره بازی کن</button>
+        <button id="stopBtn" disabled>▮▮ توقف و تحلیل</button>
+      </div>
+
+      <div class="result" id="result"></div>
+      <p class="note">رنگ انتخاب‌شده کاملاً تصادفی است و معنی خاصی ندارد.</p>
+    </section>
+  </main>
+
+<script>
+let recorder=null, stream=null, chunks=[], interval=null, remaining=60;
+const $=id=>document.getElementById(id);
+
+function updateTimer(){
+  const m=Math.floor(remaining/60), s=remaining%60;
+  $('timer').textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+
+function cleanup(){
+  if(interval){clearInterval(interval);interval=null;}
+  if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
+}
+
+$('startBtn').addEventListener('click', async()=>{
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error('مرورگر شما ضبط صدا را پشتیبانی نمی‌کند.');
+    }
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    chunks=[]; remaining=60; updateTimer();
+    recorder=new MediaRecorder(stream);
+    recorder.ondataavailable=e=>{if(e.data.size) chunks.push(e.data);};
+    recorder.onstop=analyzeAudio;
+    recorder.start();
+    $('status').textContent='در حال گوش دادن... آزادانه صحبت کن.';
+    $('startBtn').disabled=true; $('stopBtn').disabled=false;
+    interval=setInterval(()=>{remaining--;updateTimer();if(remaining<=0)stopRecording();},1000);
+  }catch(err){
+    $('status').textContent='اجازه دسترسی به میکروفون لازم است: '+err.message;
+  }
+});
+
+function stopRecording(){
+  if(!recorder || recorder.state==='inactive')return;
+  $('stopBtn').disabled=true;
+  $('status').textContent='ضبط تمام شد. در حال تحلیل...';
+  if(interval){clearInterval(interval);interval=null;}
+  recorder.stop();
+}
+$('stopBtn').addEventListener('click',stopRecording);
+
+async function analyzeAudio(){
+  cleanup();
+  try{
+    const blob=new Blob(chunks,{type:chunks[0]?.type||'audio/webm'});
+    if(blob.size===0)throw new Error('هیچ صدایی ضبط نشد.');
+    const form=new FormData(); form.append('audio',blob,'voice.webm');
+    const res=await fetch('/api/analyze',{method:'POST',body:form});
+    const type=res.headers.get('content-type')||'';
+    let data;
+    if(type.includes('application/json')) data=await res.json();
+    else throw new Error('پاسخ نامعتبر از سرور دریافت شد ('+res.status+').');
+    if(!res.ok || data.error)throw new Error(data.error||'تحلیل ناموفق بود.');
+
+    document.body.style.background=`radial-gradient(circle at 20% 20%,rgba(255,255,255,.96),transparent 27%),radial-gradient(circle at 82% 78%,rgba(255,255,255,.88),transparent 25%),linear-gradient(135deg,${lighten(data.color)},${data.color},${darken(data.color)})`;
+    $('status').textContent='رنگ تصادفی تو آماده است.';
+    $('result').innerHTML='<b>رنگ:</b> '+escapeHtml(data.color)+'<br><b>آنچه گفتی:</b><br>'+escapeHtml(data.transcript);
+    $('result').classList.add('show');
+  }catch(err){
+    $('status').textContent='خطا: '+err.message;
+    $('startBtn').disabled=false;
+  }
+}
+
+function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function lighten(hex){return mix(hex,'#ffffff',.58)}
+function darken(hex){return mix(hex,'#7b8290',.30)}
+function mix(a,b,t){const h=x=>parseInt(x,16);const c=(i)=>Math.round(h(a.slice(i,i+2))*(1-t)+h(b.slice(i,i+2))*t).toString(16).padStart(2,'0');return '#'+c(1)+c(3)+c(5)}
+$('resetBtn').addEventListener('click',()=>location.reload());
+</script>
+</body>
+</html>
